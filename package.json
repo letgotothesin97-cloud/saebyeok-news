@@ -4,6 +4,6 @@
   "private": true,
   "description": "새벽신문 운영형 뉴스 사이트",
   "main": "server.js",
-  "scripts": {"start": "node server.js"},
+  "scripts": {"start": "node -r ./subtitle-patch.js server.js"},
   "engines": {"node": ">=22"}
 }
