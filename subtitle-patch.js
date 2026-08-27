@@ -4,7 +4,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const SITE = (process.env.SITE_URL || 'https://saebyeok-news.onrender.com').replace(/\/$/, '');
-console.log('[site-patch] loaded: subtitles + social preview');
+const SOCIAL_PATH = '/kakao-preview-20260827-v3.png';
+console.log('[site-patch] loaded: subtitles + hardened Kakao social preview');
 
 const originalCreateServer = http.createServer;
 const originalEnd = http.ServerResponse.prototype.end;
@@ -16,19 +17,21 @@ http.createServer = function patchedCreateServer(...args) {
     args[listenerIndex] = function wrappedListener(req, res) {
       res.__sbRequestPath = req.url || '/';
       const pathname = String(req.url || '').split('?')[0];
-      if (pathname === '/social-card.png') {
+      if (pathname === SOCIAL_PATH || pathname === '/social-card.png') {
         const file = path.join(process.cwd(), 'social-card.png');
         fs.readFile(file, (err, data) => {
           if (err) {
-            res.writeHead(404, {'content-type':'text/plain; charset=utf-8'});
+            res.writeHead(404, {'content-type':'text/plain; charset=utf-8','cache-control':'no-store'});
             return res.end('Not found');
           }
           res.writeHead(200, {
             'content-type':'image/png',
             'content-length':data.length,
-            'cache-control':'public, max-age=86400',
-            'x-content-type-options':'nosniff'
+            'cache-control':'public, max-age=31536000, immutable',
+            'x-content-type-options':'nosniff',
+            'access-control-allow-origin':'*'
           });
+          if (req.method === 'HEAD') return res.end();
           return res.end(data);
         });
         return;
@@ -40,9 +43,7 @@ http.createServer = function patchedCreateServer(...args) {
 };
 
 function patchEditor(html) {
-  let changed = false;
   html = html.replace(/<input\b([^>]*\bname="subtitle"[^>]*)>/gi, (full, attrs) => {
-    changed = true;
     const valueMatch = attrs.match(/\bvalue="([^"]*)"/i);
     const value = valueMatch ? valueMatch[1] : '';
     return `<textarea name="subtitle" class="subtitle-input" rows="5" placeholder="부제를 입력하세요. 여러 부제는 Enter 키로 줄을 나누세요.">${value}</textarea>`;
@@ -51,24 +52,16 @@ function patchEditor(html) {
     if (!/부제|띄어쓰기|청년불자/.test(m)) return m;
     return '<div class="help">부제가 여러 개면 Enter 키로 줄을 나누세요. 입력한 줄 순서 그대로 기사에서 세로로 표시됩니다.</div>';
   });
-  if (changed) console.log('[site-patch] editor transformed');
   return html;
 }
 
 function patchDisplay(html) {
-  let changed = false;
-  html = html.replace(/<div class="subheads">([\s\S]*?)<\/div>/gi, (_m, inner) => {
-    const decoded = inner
-      .replace(/<span>/gi, '')
-      .replace(/<\/span>/gi, '\n')
-      .replace(/<br\s*\/?\s*>/gi, '\n');
+  return html.replace(/<div class="subheads">([\s\S]*?)<\/div>/gi, (_m, inner) => {
+    const decoded = inner.replace(/<span>/gi, '').replace(/<\/span>/gi, '\n').replace(/<br\s*\/?\s*>/gi, '\n');
     const lines = decoded.split(/\r?\n+/).map(v => v.trim()).filter(Boolean);
     if (!lines.length) return '';
-    changed = true;
     return `<div class="subheads vertical-subheads">${lines.map(v => `<span>${v}</span>`).join('')}</div>`;
   });
-  if (changed) console.log('[site-patch] article subtitles transformed');
-  return html;
 }
 
 function injectStyles(html) {
@@ -80,14 +73,20 @@ function injectStyles(html) {
   return html.includes('subtitle-vertical-patch') ? html : html.replace('</head>', `${style}</head>`);
 }
 
+function stripExistingSocialMeta(html) {
+  return html
+    .replace(/<meta\s+(?:property|name)="(?:og:[^"]+|twitter:[^"]+)"[^>]*>\s*/gi, '')
+    .replace(/<link\s+rel="image_src"[^>]*>\s*/gi, '');
+}
+
 function injectSocialMeta(html, requestPath='/') {
-  if (html.includes('property="og:image"')) return html;
+  html = stripExistingSocialMeta(html);
   const titleMatch = html.match(/<title>([\s\S]*?)<\/title>/i);
   let title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').trim() : '새벽신문';
   if (/^홈\s*\|\s*새벽신문$/.test(title)) title = '새벽신문';
   const description = '사실을 깊게, 세상을 바르게. 새벽신문';
-  const image = `${SITE}/social-card.png?v=20260827`;
-  const cleanPath = String(requestPath || '/').split('#')[0];
+  const image = `${SITE}${SOCIAL_PATH}`;
+  const cleanPath = String(requestPath || '/').split('?')[0].split('#')[0];
   const url = `${SITE}${cleanPath.startsWith('/') ? cleanPath : '/' + cleanPath}`;
   const meta = `<meta property="og:type" content="website">
 <meta property="og:site_name" content="새벽신문">
@@ -95,6 +94,7 @@ function injectSocialMeta(html, requestPath='/') {
 <meta property="og:description" content="${description}">
 <meta property="og:url" content="${url.replace(/"/g,'%22')}">
 <meta property="og:image" content="${image}">
+<meta property="og:image:url" content="${image}">
 <meta property="og:image:secure_url" content="${image}">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
@@ -104,8 +104,9 @@ function injectSocialMeta(html, requestPath='/') {
 <meta name="twitter:title" content="${title.replace(/"/g,'&quot;')}">
 <meta name="twitter:description" content="${description}">
 <meta name="twitter:image" content="${image}">
-<link rel="image_src" href="${image}">`;
-  return html.replace('</head>', `${meta}</head>`);
+<link rel="image_src" href="${image}">
+`;
+  return html.replace(/<head>/i, `<head>\n${meta}`);
 }
 
 http.ServerResponse.prototype.end = function patchedEnd(chunk, encoding, callback) {
@@ -120,6 +121,7 @@ http.ServerResponse.prototype.end = function patchedEnd(chunk, encoding, callbac
       html = injectSocialMeta(html, this.__sbRequestPath || '/');
       chunk = wasBuffer ? Buffer.from(html, encoding || 'utf8') : html;
       this.removeHeader('content-length');
+      this.setHeader('cache-control','no-store, no-cache, must-revalidate');
     }
   } catch (err) {
     console.error('[site-patch] failed:', err.message);
