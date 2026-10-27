@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>사이신문 아랍어 순환 콘텐츠 — 시제품</title>
+<style>
+:root{font-family:system-ui,'Noto Sans KR',sans-serif;color:#17212f;background:#f8f7f4}body{max-width:900px;margin:30px auto;padding:0 16px}h1{font-size:24px}h2{font-size:18px}section{background:white;border:1px solid #ddd;border-radius:12px;padding:20px;margin:16px 0}button,input,textarea,select{font:inherit}button{padding:9px 14px;border:1px solid #aaa;background:white;border-radius:7px;cursor:pointer}button:disabled{opacity:.4}button.primary{background:#8d251f;color:white;border-color:#8d251f}input,textarea,select{padding:9px;border:1px solid #bbb;border-radius:6px;width:100%;box-sizing:border-box}label{display:block;margin:10px 0 4px;font-size:14px}textarea{min-height:100px}.arabic{font-size:29px;direction:rtl;text-align:center;line-height:1.8}.center{text-align:center}.muted{color:#687385;font-size:13px}.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.entry{border-top:1px solid #eee;padding:12px 0;display:flex;gap:10px;align-items:center}.entry .info{flex:1;min-width:0;overflow-wrap:anywhere}.entry button{padding:5px 9px}.tabs{display:flex;gap:8px}.tabs button[aria-pressed=true]{background:#222;color:white}.source{overflow-wrap:anywhere}a{color:#8d251f}@media(max-width:550px){.arabic{font-size:23px}.entry{flex-wrap:wrap}}
+</style></head><body>
+<h1>사이신문 · 아랍어 자동 순환 시제품</h1><p class="muted">이 페이지는 실제 사이트·기사·댓글과 분리된 실험용입니다. 저장한 항목은 이 브라우저에만 남습니다. 출처 검증 전에는 공개하지 마세요.</p>
+<section><div class="tabs"><button id="tab-proverb" aria-pressed="true">아랍어 속담</button><button id="tab-word" aria-pressed="false">하루 아랍어</button></div>
+<p class="muted">방문자별 30분 이상 간격의 새 방문 시 다음 표현을 표시합니다. 이전·다음 버튼은 현재 화면에만 적용됩니다.</p>
+<div id="public"></div><div class="actions"><button id="prev">← 이전</button><span id="counter"></span><button id="next">다음 →</button></div></section>
+<section><h2>관리자 등록·정렬 시제품</h2><p class="muted">실제 서비스에서는 로그인 관리자만 접근하도록 서버 인증을 추가해야 합니다.</p>
+<div id="entries"></div><h3>한 건 등록</h3><label>아랍어</label><input id="arabic" dir="rtl"><label>한국어</label><input id="korean"><label>설명</label><textarea id="note"></textarea><label>출처 URL (https)</label><input id="source" type="url"><label>검수 상태</label><select id="verified"><option value="false">검수 대기 (비공개)</option><option value="true">출처 확인 완료 (공개)</option></select><p><button class="primary" id="add">등록</button></p>
+<h3>여러 건 일괄 등록</h3><p class="muted">한 줄에 아랍어 [탭] 한국어 [탭] 설명 [탭] 출처 URL 순서로 붙여넣으세요. 모두 비공개로 등록됩니다.</p><textarea id="bulk" placeholder="العربية&#9;한국어 뜻&#9;설명&#9;https://example.org/source"></textarea><p><button id="import">일괄 등록</button> <button id="export">JSON 백업 내려받기</button></p><p id="message" role="status"></p></section>
+<script>
+(()=>{'use strict';
+const KEY='sb-arabic-rotation-demo-v1',VISIT='sb-arabic-rotation-visit-v1',TYPES=['proverb','word'];
+const starter={proverb:[],word:[]};let data;try{data=JSON.parse(localStorage.getItem(KEY))||starter}catch{data=starter}
+for(const t of TYPES)if(!Array.isArray(data[t]))data[t]=[];
+let type='proverb',shown={proverb:null,word:null};
+const el=id=>document.getElementById(id),save=()=>localStorage.setItem(KEY,JSON.stringify(data));
+const clean=x=>String(x??'').trim(),validUrl=u=>{try{const x=new URL(u);return x.protocol==='https:'}catch{return false}};
+const visible=t=>data[t].filter(x=>x.verified===true);
+function rotate(t){const list=visible(t);if(!list.length){shown[t]=null;return}let state={};try{state=JSON.parse(localStorage.getItem(VISIT))||{}}catch{}
+const now=Date.now(),prior=state[t]||{},newVisit=!prior.at||now-prior.at>30*60*1000;
+let index=list.findIndex(x=>x.id===prior.id);if(index<0)index=0;else if(newVisit)index=(index+1)%list.length;
+shown[t]=list[index].id;state[t]={id:shown[t],at:newVisit?now:prior.at};localStorage.setItem(VISIT,JSON.stringify(state))}
+function selectNext(delta){const list=visible(type);if(!list.length)return;let i=list.findIndex(x=>x.id===shown[type]);i=(i+delta+list.length)%list.length;shown[type]=list[i].id;const state=JSON.parse(localStorage.getItem(VISIT)||'{}');state[type]={id:shown[type],at:Date.now()};localStorage.setItem(VISIT,JSON.stringify(state));render()}
+function node(tag,txt,cls){const e=document.createElement(tag);if(txt!==undefined)e.textContent=txt;if(cls)e.className=cls;return e}
+function render(){for(const t of TYPES)el('tab-'+t).setAttribute('aria-pressed',String(type===t));const out=el('public');out.replaceChildren();const list=visible(type),i=list.findIndex(x=>x.id===shown[type]),item=list[i];if(!item){out.append(node('p','검수 완료된 표현이 없습니다.','muted'));el('counter').textContent='0 / 0'}else{out.append(node('div',item.arabic,'arabic'));out.append(node('p',item.korean,'center'));if(item.note)out.append(node('p',item.note,'center muted'));if(item.source){const p=node('p',undefined,'center source'),a=node('a','출처 보기');a.href=item.source;a.target='_blank';a.rel='noopener noreferrer';p.append(a);out.append(p)}el('counter').textContent=(i+1)+' / '+list.length}
+el('prev').disabled=el('next').disabled=list.length<2;renderEntries()}
+function renderEntries(){const out=el('entries');out.replaceChildren();data[type].forEach((x,i)=>{const row=node('div',undefined,'entry'),info=node('div',undefined,'info');info.append(node('strong',x.arabic));info.append(node('div',x.korean,'muted'));info.append(node('div',x.verified?'공개·검수 완료':'비공개·검수 대기','muted'));row.append(info);
+const up=node('button','↑'),down=node('button','↓'),toggle=node('button',x.verified?'비공개':'검수 완료'),del=node('button','삭제');up.disabled=i===0;down.disabled=i===data[type].length-1;
+up.onclick=()=>move(i,-1);down.onclick=()=>move(i,1);toggle.onclick=()=>{if(!x.verified&&!validUrl(x.source)){message('공개하려면 https 출처 URL이 필요합니다.');return}x.verified=!x.verified;save();rotate(type);render()};del.onclick=()=>{if(!confirm('이 항목을 삭제할까요?'))return;data[type].splice(i,1);save();rotate(type);render()};row.append(up,down,toggle,del);out.append(row)})}
+function move(i,d){const a=data[type];[a[i],a[i+d]]=[a[i+d],a[i]];save();render()}
+function message(t){el('message').textContent=t}
+for(const t of TYPES)el('tab-'+t).onclick=()=>{type=t;if(shown[t]===null)rotate(t);render()};
+el('prev').onclick=()=>selectNext(-1);el('next').onclick=()=>selectNext(1);
+el('add').onclick=()=>{const arabic=clean(el('arabic').value),korean=clean(el('korean').value),note=clean(el('note').value),source=clean(el('source').value),verified=el('verified').value==='true';if(!arabic||!korean)return message('아랍어와 한국어는 필수입니다.');if(source&&!validUrl(source))return message('출처는 https 주소로 입력해주세요.');if(verified&&!source)return message('공개 항목에는 출처가 필요합니다.');data[type].push({id:crypto.randomUUID(),arabic,korean,note,source,verified});save();for(const id of ['arabic','korean','note','source'])el(id).value='';el('verified').value='false';message('등록했습니다.');rotate(type);render()};
+el('import').onclick=()=>{const lines=el('bulk').value.split(/\r?\n/).filter(x=>x.trim());if(lines.length>500)return message('한 번에 500개까지만 등록할 수 있습니다.');const records=[];for(const line of lines){const [arabic,korean,note='',source='']=line.split('\t').map(clean);if(!arabic||!korean||source&&!validUrl(source))return message('일괄 등록 형식이나 출처 URL을 확인해주세요.');records.push({id:crypto.randomUUID(),arabic,korean,note,source,verified:false})}data[type].push(...records);save();el('bulk').value='';message(records.length+'개를 비공개로 등록했습니다.');render()};
+el('export').onclick=()=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download='sae-arabic-content-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+rotate('proverb');rotate('word');render();
+})();
+</script></body></html>
